@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { creerClientSupabase } from "@/lib/supabase";
+import { creerClientAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
 export default async function ListeFiches() {
-  const supabase = creerClientSupabase();
+  const supabase = creerClientAdmin();
   const { data: fiches, error } = await supabase
     .from("fiches")
     .select("id, titre, created_at")

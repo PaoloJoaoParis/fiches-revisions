@@ -1,7 +1,7 @@
 import { LIMITES } from "@/lib/fiche";
 import { genererFiche } from "@/lib/generer-fiche";
 import { ErreurIA } from "@/lib/ia";
-import { creerClientSupabase } from "@/lib/supabase";
+import { creerClientAdmin } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
   // 2. Enregistrement de la fiche dans la base de données
   try {
-    const supabase = creerClientSupabase();
+    const supabase = creerClientAdmin();
     const { data, error } = await supabase
       .from("fiches")
       .insert({
