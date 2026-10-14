@@ -1,9 +1,22 @@
 import { LIMITES } from "@/lib/fiche";
 import { genererFiche } from "@/lib/generer-fiche";
 import { ErreurIA } from "@/lib/ia";
-import { creerClientAdmin } from "@/lib/supabase/admin";
+import { creerClientServeur } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
+  // 0. Vérification de la session
+  const supabase = await creerClientServeur();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return Response.json(
+      { erreur: "Votre session a expiré. Reconnectez-vous pour générer une fiche." },
+      { status: 401 }
+    );
+  }
+
   const body = await request.json();
   const titre = typeof body.titre === "string" ? body.titre.trim() : "";
   const texte = typeof body.texte === "string" ? body.texte.trim() : "";
@@ -32,9 +45,8 @@ export async function POST(request: Request) {
     return reponseErreurIA(erreur);
   }
 
-  // 2. Enregistrement de la fiche dans la base de données
+  // 2. Enregistrement de la fiche, au nom de l'utilisateur connecté
   try {
-    const supabase = creerClientAdmin();
     const { data, error } = await supabase
       .from("fiches")
       .insert({

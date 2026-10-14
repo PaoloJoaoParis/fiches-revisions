@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import AffichageFiche from "@/components/AffichageFiche";
 import type { FicheEnregistree } from "@/lib/fiche";
-import { creerClientAdmin } from "@/lib/supabase/admin";
+import { creerClientServeur } from "@/lib/supabase/server";
 
 export default async function DetailFiche({
   params,
@@ -11,7 +11,7 @@ export default async function DetailFiche({
 }) {
   const { id } = await params;
 
-  const supabase = creerClientAdmin();
+  const supabase = await creerClientServeur();
   const { data: fiche } = await supabase
     .from("fiches")
     .select("id, titre, synthese, questions, created_at")
