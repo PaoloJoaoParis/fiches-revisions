@@ -2,6 +2,8 @@ import "server-only";
 import type { Controle } from "@/lib/statut";
 import { creerClientAdmin } from "@/lib/supabase/admin";
 
+import { redis } from "@/lib/limitation";
+
 const controleVercel: Controle = {
   service: "Vercel",
   description: "Hébergement et fonctions serverless",
@@ -64,4 +66,64 @@ const controleBase: Controle = {
   },
 };
 
-export const CONTROLES: Controle[] = [controleVercel, controleIA, controleBase];
+const controleAuth: Controle = {
+  service: "Supabase Auth",
+  description: "Connexion des utilisateurs",
+  verifier: async () => {
+    const supabase = creerClientAdmin();
+    const { error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1 });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return "Service d'authentification joignable";
+  },
+};
+
+const controleStockage: Controle = {
+  service: "Supabase Storage",
+  description: "Stockage des cours en PDF",
+  verifier: async () => {
+    const supabase = creerClientAdmin();
+    const { data, error } = await supabase.storage.getBucket("cours");
+
+    if (error || !data) {
+      throw new Error(error?.message ?? "Bucket « cours » introuvable");
+    }
+
+    if (data.public) {
+      throw new Error("Le bucket « cours » est public : les cours sont exposés à tous");
+    }
+
+    const limiteMo = data.file_size_limit
+      ? `${Math.round(data.file_size_limit / 1024 / 1024)} Mo`
+      : "aucune";
+
+    return `Bucket « cours » privé · Taille maximale : ${limiteMo}`;
+  },
+};
+
+const controleRedis: Controle = {
+  service: "Upstash Redis",
+  description: "Limitation du nombre de générations",
+  verifier: async () => {
+    const reponse = await redis.ping();
+
+    if (reponse !== "PONG") {
+      throw new Error(`Réponse inattendue : ${reponse}`);
+    }
+
+    const nombreCles = await redis.dbsize();
+    return `Base joignable · ${nombreCles} clé(s) en mémoire`;
+  },
+};
+
+export const CONTROLES: Controle[] = [
+  controleVercel,
+  controleIA,
+  controleBase,
+  controleAuth,
+  controleStockage,
+  controleRedis,
+];

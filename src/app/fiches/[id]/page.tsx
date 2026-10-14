@@ -14,12 +14,20 @@ export default async function DetailFiche({
   const supabase = await creerClientServeur();
   const { data: fiche } = await supabase
     .from("fiches")
-    .select("id, titre, synthese, questions, created_at")
+    .select("id, titre, synthese, questions, created_at, fichier_chemin")
     .eq("id", id)
-    .maybeSingle<FicheEnregistree>();
+    .maybeSingle<FicheEnregistree & { fichier_chemin: string | null }>();
 
   if (!fiche) {
     notFound();
+  }
+
+  let lienPdf: string | null = null;
+  if (fiche.fichier_chemin) {
+    const { data } = await supabase.storage
+      .from("cours")
+      .createSignedUrl(fiche.fichier_chemin, 300);
+    lienPdf = data?.signedUrl ?? null;
   }
 
   return (
@@ -30,6 +38,13 @@ export default async function DetailFiche({
       <p className="mt-4 text-sm text-gray-500">
         Créée le {new Date(fiche.created_at).toLocaleDateString("fr-FR")}
       </p>
+      {lienPdf && (
+        <p className="mt-2 text-sm">
+          <a href={lienPdf} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+            Télécharger le cours d'origine (PDF)
+          </a>
+        </p>
+      )}
       <AffichageFiche fiche={fiche} />
     </main>
   );
