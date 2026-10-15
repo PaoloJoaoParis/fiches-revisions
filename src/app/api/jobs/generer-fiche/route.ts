@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs";
 import { envoyerNotification } from "@/lib/email";
 import { genererFiche } from "@/lib/generer-fiche";
@@ -41,6 +42,11 @@ async function notifier(
     });
   } catch (erreur) {
     console.error("Échec de l'envoi de la notification :", erreur);
+    Sentry.captureException(erreur, {
+      level: "warning",
+      tags: { tache: "notification-email" },
+      extra: { ficheId: fiche.id },
+    });
   }
 }
 
@@ -62,6 +68,8 @@ async function traiter(request: Request) {
     return Response.json({ resultat: "ignoré" });
   }
 
+  Sentry.setUser({ id: fiche.user_id });
+
   try {
     const resultat = await genererFiche(fiche.titre, fiche.texte_source);
 
@@ -80,6 +88,10 @@ async function traiter(request: Request) {
     return Response.json({ resultat: "prête" });
   } catch (erreur) {
     console.error(`Échec de la génération (tentative ${tentative + 1}) :`, erreur);
+    Sentry.captureException(erreur, {
+      tags: { tache: "generation-fiche", tentative: String(tentative + 1) },
+      extra: { ficheId: fiche.id },
+    });
 
     // Erreur passagère et tentatives restantes : on demande à QStash de réessayer
     if (estReessayable(erreur) && tentative < NOMBRE_REESSAIS) {

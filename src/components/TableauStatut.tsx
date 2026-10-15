@@ -33,6 +33,7 @@ export default function TableauStatut() {
   const [donnees, setDonnees] = useState<ReponseStatut | null>(null);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState("");
+  const [messageTest, setMessageTest] = useState("");
 
   function actualiser() {
     setChargement(true);
@@ -43,6 +44,16 @@ export default function TableauStatut() {
       })
       .catch(() => setErreur("Impossible de joindre la route de statut."))
       .finally(() => setChargement(false));
+  }
+
+  async function envoyerErreurTest() {
+    setMessageTest("Envoi…");
+    const reponse = await fetch("/api/admin/erreur-test", { method: "POST" });
+    setMessageTest(
+      reponse.status === 500
+        ? "Erreur de test envoyée : elle doit apparaître dans Sentry d'ici quelques secondes."
+        : `Réponse inattendue (statut ${reponse.status}).`
+    );
   }
 
   useEffect(() => {
@@ -56,14 +67,23 @@ export default function TableauStatut() {
     <main className="mx-auto max-w-4xl p-8">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Administration</h1>
-        <button
-          onClick={actualiser}
-          disabled={chargement}
-          className="rounded bg-blue-600 px-4 py-2 font-medium text-white disabled:opacity-50"
-        >
-          {chargement ? "Vérification…" : "Relancer les tests"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={envoyerErreurTest}
+            className="rounded border px-4 py-2 font-medium"
+          >
+            Envoyer une erreur de test
+          </button>
+          <button
+            onClick={actualiser}
+            disabled={chargement}
+            className="rounded bg-blue-600 px-4 py-2 font-medium text-white disabled:opacity-50"
+          >
+            {chargement ? "Vérification…" : "Relancer les tests"}
+          </button>
+        </div>
       </div>
+      {messageTest && <p className="mt-2 text-sm text-gray-600">{messageTest}</p>}
 
       {erreur && (
         <p className="mt-6 rounded border border-red-300 bg-red-50 p-3 text-red-700">

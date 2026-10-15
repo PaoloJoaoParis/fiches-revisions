@@ -197,6 +197,22 @@ const controleEmail: Controle = {
   },
 };
 
+const controleSentry: Controle = {
+  service: "Sentry",
+  description: "Suivi des erreurs",
+  verifier: async () => {
+    const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
+    if (!dsn) {
+      throw new Error("Variable NEXT_PUBLIC_SENTRY_DSN manquante : les erreurs ne sont pas collectées");
+    }
+
+    const adresse = new URL(dsn);
+    const environnement = process.env.VERCEL_ENV ?? "local";
+
+    return `DSN configuré · Envoi vers ${adresse.host} · Environnement : ${environnement}`;
+  },
+};
+
 export const CONTROLES: Controle[] = [
   controleVercel,
   controleIA,
@@ -207,4 +223,5 @@ export const CONTROLES: Controle[] = [
   controleQStash,
   controleRealtime,
   controleEmail,
+  controleSentry,
 ];

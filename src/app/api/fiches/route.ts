@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import { LIMITES } from "@/lib/fiche";
 import { limiteurGenerations } from "@/lib/limitation";
 import { extraireTextePdf } from "@/lib/pdf";
@@ -117,6 +118,7 @@ export async function POST(request: Request) {
     await publierGeneration(fiche.id);
   } catch (erreur) {
     console.error("Erreur lors de la publication du message :", erreur);
+    Sentry.captureException(erreur, { tags: { tache: "publication-qstash" } });
 
     // Traitement système, sans utilisateur : usage légitime du client administrateur
     await creerClientAdmin()
