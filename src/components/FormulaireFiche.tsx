@@ -9,6 +9,7 @@ import { creerClientNavigateur } from "@/lib/supabase/client";
 type Mode = "texte" | "pdf";
 
 const TAILLE_MAX_PDF = 5 * 1024 * 1024;
+const DELAI_MAX_MS = 90000;
 
 async function deposerPdf(fichier: File): Promise<string> {
   const supabase = creerClientNavigateur();
@@ -31,6 +32,75 @@ async function deposerPdf(fichier: File): Promise<string> {
   }
 
   return chemin;
+}
+
+// S'abonne aux changements de la fiche et attend qu'elle soit prête ou en erreur
+async function attendreFiche(id: string): Promise<FicheEnregistree> {
+  const supabase = creerClientNavigateur();
+
+  // Charge la session : l'abonnement doit être fait au nom de l'utilisateur,
+  // pour que la Row Level Security autorise la réception des événements
+  await supabase.auth.getSession();
+
+  return new Promise((resolve, reject) => {
+    const canal = supabase.channel(`fiche-${id}`);
+    let termine = false;
+    let minuteur: ReturnType<typeof setTimeout> | undefined;
+
+    function terminer(action: () => void) {
+      if (termine) return;
+      termine = true;
+      clearTimeout(minuteur);
+      supabase.removeChannel(canal);
+      action();
+    }
+
+    function examiner(fiche: FicheEnregistree) {
+      if (fiche.statut === "prete") {
+        terminer(() => resolve(fiche));
+      } else if (fiche.statut === "erreur") {
+        terminer(() =>
+          reject(new Error(fiche.message_erreur ?? "La génération de la fiche a échoué."))
+        );
+      }
+    }
+
+    minuteur = setTimeout(
+      () =>
+        terminer(() =>
+          reject(
+            new Error(
+              "La génération prend plus de temps que prévu. Votre fiche apparaîtra dans « Mes fiches » dès qu'elle sera prête."
+            )
+          )
+        ),
+      DELAI_MAX_MS
+    );
+
+    canal
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "fiches", filter: `id=eq.${id}` },
+        (evenement) => examiner(evenement.new as FicheEnregistree)
+      )
+      .subscribe(async (statut) => {
+        if (statut === "SUBSCRIBED") {
+          // La génération a pu se terminer avant l'abonnement : on vérifie une fois l'état actuel
+          const reponse = await fetch(`/api/fiches/${id}`, { cache: "no-store" });
+          if (reponse.ok) examiner(await reponse.json());
+        }
+
+        if (statut === "CHANNEL_ERROR" || statut === "TIMED_OUT") {
+          terminer(() =>
+            reject(
+              new Error(
+                "La connexion en temps réel a échoué. Votre fiche apparaîtra dans « Mes fiches » dès qu'elle sera prête."
+              )
+            )
+          );
+        }
+      });
+  });
 }
 
 export default function FormulaireFiche() {
@@ -71,28 +141,31 @@ export default function FormulaireFiche() {
         corps = { titre, texte };
       }
 
-      setEtape("Génération en cours…");
+      setEtape("Enregistrement de la demande…");
       const reponse = await fetch("/api/fiches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(corps),
       });
       const donnees = await reponse.json();
-      
 
       const entete = reponse.headers.get("X-RateLimit-Remaining");
-        if (entete !== null) setRestantes(Number(entete));
+      if (entete !== null) setRestantes(Number(entete));
 
       if (!reponse.ok) {
         setErreur(donnees.erreur ?? "Une erreur est survenue.");
         return;
       }
 
-      setFiche(donnees);
+      // La demande est acceptée : on vide le formulaire et on attend la fiche
       setTitre("");
       setTexte("");
       setFichier(null);
       setCleFichier((cle) => cle + 1);
+
+      setEtape("Génération en arrière-plan…");
+      const ficheTerminee = await attendreFiche(donnees.id);
+      setFiche(ficheTerminee);
     } catch (err) {
       setErreur(
         err instanceof TypeError
@@ -196,6 +269,14 @@ export default function FormulaireFiche() {
         >
           {chargement ? etape : "Générer la fiche"}
         </button>
+
+        {chargement && etape === "Génération en arrière-plan…" && (
+          <p className="text-sm text-gray-500">
+            Vous pouvez quitter cette page : la fiche apparaîtra dans « Mes fiches » dès
+            qu’elle sera prête.
+          </p>
+        )}
+
         {restantes !== null && (
           <p className="text-sm text-gray-500">
             {restantes > 0

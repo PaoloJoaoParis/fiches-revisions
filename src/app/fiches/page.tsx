@@ -7,7 +7,7 @@ export default async function ListeFiches() {
   const supabase = await creerClientServeur();
   const { data: fiches, error } = await supabase
     .from("fiches")
-    .select("id, titre, created_at")
+    .select("id, titre, created_at, statut")
     .order("created_at", { ascending: false });
 
   return (
@@ -34,7 +34,20 @@ export default async function ListeFiches() {
               href={`/fiches/${fiche.id}`}
               className="block rounded border p-4 hover:bg-gray-50"
             >
-              <p className="font-medium">{fiche.titre}</p>
+              <p className="font-medium">
+                {fiche.titre}
+                {fiche.statut !== "prete" && (
+                  <span
+                    className={`ml-2 rounded px-2 py-0.5 text-xs ${
+                      fiche.statut === "en_attente"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-red-100 text-red-800"
+                    }`}
+                  >
+                    {fiche.statut === "en_attente" ? "En cours de génération" : "Échec"}
+                  </span>
+                )}
+              </p>
               <p className="text-sm text-gray-500">
                 {new Date(fiche.created_at).toLocaleDateString("fr-FR")}
               </p>

@@ -3,6 +3,7 @@ import type { Controle } from "@/lib/statut";
 import { creerClientAdmin } from "@/lib/supabase/admin";
 
 import { redis } from "@/lib/limitation";
+import { qstash } from "@/lib/qstash";
 
 const controleVercel: Controle = {
   service: "Vercel",
@@ -119,6 +120,83 @@ const controleRedis: Controle = {
   },
 };
 
+const controleQStash: Controle = {
+  service: "Upstash QStash",
+  description: "File de messages des générations",
+  verifier: async () => {
+    if (!process.env.QSTASH_URL || !process.env.QSTASH_TOKEN) {
+      throw new Error("Variables QSTASH_URL ou QSTASH_TOKEN manquantes");
+    }
+
+    if (!process.env.APP_URL) {
+      throw new Error("Variable APP_URL manquante : QStash ne saurait pas où livrer les messages");
+    }
+
+    if (!process.env.QSTASH_CURRENT_SIGNING_KEY || !process.env.QSTASH_NEXT_SIGNING_KEY) {
+      throw new Error("Clés de signature manquantes : le worker refuserait tous les messages");
+    }
+
+    await qstash.schedules.list();
+
+    return `Service joignable · Destination : ${process.env.APP_URL}`;
+  },
+};
+
+const controleRealtime: Controle = {
+  service: "Supabase Realtime",
+  description: "Notifications en temps réel",
+  verifier: async () => {
+    const supabase = creerClientAdmin();
+    const canal = supabase.channel(`controle-${Date.now()}`);
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        canal.subscribe((statut, erreur) => {
+          if (statut === "SUBSCRIBED") resolve();
+          if (statut === "CHANNEL_ERROR" || statut === "TIMED_OUT") {
+            reject(erreur ?? new Error(`Connexion impossible (${statut})`));
+          }
+        });
+      });
+
+      return "Connexion WebSocket établie";
+    } finally {
+      await supabase.removeChannel(canal);
+      supabase.realtime.disconnect();
+    }
+  },
+};
+
+const controleEmail: Controle = {
+  service: "Resend",
+  description: "Envoi des notifications par e-mail",
+  verifier: async () => {
+    const cle = process.env.RESEND_API_KEY;
+    if (!cle) {
+      throw new Error("Variable RESEND_API_KEY manquante");
+    }
+
+    const reponse = await fetch("https://api.resend.com/domains", {
+      headers: { Authorization: `Bearer ${cle}` },
+      cache: "no-store",
+    });
+
+    if (reponse.ok) {
+      return "Clé valide (accès complet : préférez une clé limitée à l'envoi)";
+    }
+
+    const corps = await reponse.json().catch(() => ({}));
+
+    // Une clé limitée à l'envoi est reconnue par Resend, mais refusée sur cette route :
+    // c'est la preuve qu'elle est valide, avec le minimum de droits
+    if (corps.name === "restricted_api_key") {
+      return "Clé valide, limitée à l'envoi d'e-mails";
+    }
+
+    throw new Error(corps.message ?? `L'API a répondu avec le statut ${reponse.status}`);
+  },
+};
+
 export const CONTROLES: Controle[] = [
   controleVercel,
   controleIA,
@@ -126,4 +204,7 @@ export const CONTROLES: Controle[] = [
   controleAuth,
   controleStockage,
   controleRedis,
+  controleQStash,
+  controleRealtime,
+  controleEmail,
 ];

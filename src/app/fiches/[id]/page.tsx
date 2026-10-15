@@ -14,7 +14,7 @@ export default async function DetailFiche({
   const supabase = await creerClientServeur();
   const { data: fiche } = await supabase
     .from("fiches")
-    .select("id, titre, synthese, questions, created_at, fichier_chemin")
+    .select("id, titre, synthese, questions, created_at, fichier_chemin, statut, message_erreur")
     .eq("id", id)
     .maybeSingle<FicheEnregistree & { fichier_chemin: string | null }>();
 
@@ -45,7 +45,21 @@ export default async function DetailFiche({
           </a>
         </p>
       )}
-      <AffichageFiche fiche={fiche} />
+      {fiche.statut === "prete" && <AffichageFiche fiche={fiche} />}
+
+      {fiche.statut === "en_attente" && (
+        <p className="mt-6 rounded border border-yellow-300 bg-yellow-50 p-3 text-yellow-800">
+          La fiche « {fiche.titre} » est en cours de génération. Rechargez la page dans
+          quelques instants.
+        </p>
+      )}
+
+      {fiche.statut === "erreur" && (
+        <p className="mt-6 rounded border border-red-300 bg-red-50 p-3 text-red-700">
+          La génération de la fiche « {fiche.titre} » a échoué :{" "}
+          {fiche.message_erreur ?? "erreur inconnue"}.
+        </p>
+      )}
     </main>
   );
 }

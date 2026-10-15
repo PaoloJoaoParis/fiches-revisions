@@ -1,8 +1,8 @@
 import { LIMITES } from "@/lib/fiche";
-import { genererFiche } from "@/lib/generer-fiche";
-import { ErreurIA } from "@/lib/ia";
 import { limiteurGenerations } from "@/lib/limitation";
 import { extraireTextePdf } from "@/lib/pdf";
+import { publierGeneration } from "@/lib/qstash";
+import { creerClientAdmin } from "@/lib/supabase/admin";
 import { creerClientServeur } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
@@ -96,66 +96,40 @@ export async function POST(request: Request) {
     console.error("Limitation de débit indisponible :", erreur);
   }
 
-  // 3. Génération de la fiche par le modèle d'IA
-  let fiche;
-  try {
-    fiche = await genererFiche(titre, texte);
-  } catch (erreur) {
-    return reponseErreurIA(erreur);
-  }
 
-  // 4. Enregistrement de la fiche, au nom de l'utilisateur connecté
-  try {
-    const { data, error } = await supabase
-      .from("fiches")
-      .insert({
-        titre: fiche.titre,
-        texte_source: texte,
-        synthese: fiche.synthese,
-        questions: fiche.questions,
-        modele: process.env.AI_MODEL,
-        fichier_chemin: cheminFichier,
-      })
-      .select("id, titre, synthese, questions, created_at")
-      .single();
+  // 3. Enregistrement de la demande, avec le statut « en attente »
+  const { data: fiche, error } = await supabase
+    .from("fiches")
+    .insert({ titre, texte_source: texte, fichier_chemin: cheminFichier })
+    .select("id, statut")
+    .single();
 
-    if (error) throw error;
-
-    return Response.json(data, { status: 201, headers: enTetesQuota });
-  } catch (erreur) {
-    console.error("Erreur lors de l'enregistrement de la fiche :", erreur);
+  if (error || !fiche) {
+    console.error("Erreur lors de l'enregistrement de la demande :", error);
     return Response.json(
-      { erreur: "La fiche a été générée mais n'a pas pu être enregistrée. Réessayez plus tard." },
+      { erreur: "La demande n'a pas pu être enregistrée. Réessayez plus tard." },
       { status: 500 }
     );
   }
-}
 
-function reponseErreurIA(erreur: unknown) {
-  if (erreur instanceof ErreurIA && erreur.status === 429) {
+  // 4. Publication du message de génération dans la file
+  try {
+    await publierGeneration(fiche.id);
+  } catch (erreur) {
+    console.error("Erreur lors de la publication du message :", erreur);
+
+    // Traitement système, sans utilisateur : usage légitime du client administrateur
+    await creerClientAdmin()
+      .from("fiches")
+      .update({ statut: "erreur", message_erreur: "La génération n'a pas pu être lancée." })
+      .eq("id", fiche.id);
+
     return Response.json(
-      { erreur: "Le quota du service d'IA est atteint. Réessayez dans quelques instants." },
-      { status: 429 }
+      { erreur: "La génération n'a pas pu être lancée. Réessayez plus tard." },
+      { status: 503 }
     );
   }
 
-  if (erreur instanceof ErreurIA && erreur.status === 413) {
-    return Response.json(
-      { erreur: "Le texte est trop volumineux pour le service d'IA. Réduisez-le et réessayez." },
-      { status: 413 }
-    );
-  }
-
-  if (erreur instanceof Error && erreur.name === "TimeoutError") {
-    return Response.json(
-      { erreur: "Le service d'IA met trop de temps à répondre. Réessayez plus tard." },
-      { status: 504 }
-    );
-  }
-
-  console.error(erreur);
-  return Response.json(
-    { erreur: "La génération de la fiche a échoué. Réessayez plus tard." },
-    { status: 502 }
-  );
+  // 5. Réponse immédiate : la demande est acceptée, le traitement suivra
+  return Response.json(fiche, { status: 202, headers: enTetesQuota });
 }
