@@ -71,7 +71,12 @@ async function traiter(request: Request) {
   Sentry.setUser({ id: fiche.user_id });
 
   try {
-    const resultat = await genererFiche(fiche.titre, fiche.texte_source);
+    const resultat = await genererFiche(fiche.titre, fiche.texte_source, {
+      id: fiche.id,
+      nom: "generation-fiche",
+      userId: fiche.user_id,
+      metadata: { tentativeQStash: tentative + 1 },
+    });
 
     await supabase
       .from("fiches")

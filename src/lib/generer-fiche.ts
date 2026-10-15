@@ -1,5 +1,6 @@
 import type { Fiche, Question } from "@/lib/fiche";
 import { appelerModele, ErreurIA } from "@/lib/ia";
+import type { ContexteTrace } from "@/lib/langfuse";
 
 const CONSIGNE_SYSTEME = `Tu es un assistant pédagogique qui aide des étudiants à réviser.
 À partir du cours fourni, tu produis une fiche de révision en français.
@@ -59,13 +60,17 @@ function estReponseValide(donnees: unknown): donnees is ReponseModele {
   );
 }
 
-async function tenterGeneration(titre: string, texte: string): Promise<Fiche> {
+async function tenterGeneration(
+  titre: string,
+  texte: string,
+  trace?: ContexteTrace
+): Promise<Fiche> {
   const contenu = await appelerModele(
     [
       { role: "system", content: CONSIGNE_SYSTEME },
       { role: "user", content: `Titre : ${titre}\n\nCours :\n"""\n${texte}\n"""` },
     ],
-    { schema: SCHEMA_FICHE }
+    { schema: SCHEMA_FICHE, trace }
   );
 
   let donnees: unknown;
@@ -86,12 +91,16 @@ async function tenterGeneration(titre: string, texte: string): Promise<Fiche> {
   };
 }
 
-export async function genererFiche(titre: string, texte: string): Promise<Fiche> {
+export async function genererFiche(
+  titre: string,
+  texte: string,
+  trace?: ContexteTrace
+): Promise<Fiche> {
   let derniereErreur: unknown;
 
   for (let tentative = 1; tentative <= NOMBRE_TENTATIVES; tentative++) {
     try {
-      return await tenterGeneration(titre, texte);
+      return await tenterGeneration(titre, texte, trace);
     } catch (erreur) {
       derniereErreur = erreur;
       const erreurDeFormat =

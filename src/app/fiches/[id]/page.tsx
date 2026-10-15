@@ -41,7 +41,7 @@ export default async function DetailFiche({
       {lienPdf && (
         <p className="mt-2 text-sm">
           <a href={lienPdf} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-            Télécharger le cours d'origine (PDF)
+            Télécharger le cours d’origine (PDF)
           </a>
         </p>
       )}

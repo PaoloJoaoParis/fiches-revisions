@@ -261,6 +261,40 @@ const controleUptimeRobot: Controle = {
   },
 };
 
+const controleLangfuse: Controle = {
+  service: "Langfuse",
+  description: "Observabilité des appels au modèle d'IA",
+  verifier: async () => {
+    const baseUrl = process.env.LANGFUSE_BASE_URL;
+    const clePublique = process.env.LANGFUSE_PUBLIC_KEY;
+    const cleSecrete = process.env.LANGFUSE_SECRET_KEY;
+
+    if (!baseUrl || !clePublique || !cleSecrete) {
+      throw new Error("Variables Langfuse manquantes : les appels au modèle ne sont pas tracés");
+    }
+
+    const sante = await fetch(`${baseUrl}/api/public/health`, { cache: "no-store" });
+    if (!sante.ok) {
+      throw new Error(`Le service a répondu avec le statut ${sante.status}`);
+    }
+
+    const authentification = Buffer.from(`${clePublique}:${cleSecrete}`).toString("base64");
+    const projets = await fetch(`${baseUrl}/api/public/projects`, {
+      headers: { Authorization: `Basic ${authentification}` },
+      cache: "no-store",
+    });
+
+    if (!projets.ok) {
+      throw new Error(`Clés refusées (statut ${projets.status})`);
+    }
+
+    const donnees = await projets.json();
+    const nomProjet = donnees.data?.[0]?.name ?? "inconnu";
+
+    return `Service joignable · Projet « ${nomProjet} »`;
+  },
+};
+
 const VARIABLES_REQUISES = [
   "AI_BASE_URL",
   "AI_API_KEY",
@@ -282,6 +316,9 @@ const VARIABLES_REQUISES = [
   "LANGFUSE_BASE_URL",
   "LANGFUSE_PUBLIC_KEY",
   "LANGFUSE_SECRET_KEY",
+  "JETON_API_VERCEL",
+  "PROJET_VERCEL_ID",
+  "EQUIPE_VERCEL_ID",
 ];
 
 const controleSecrets: Controle = {
@@ -303,6 +340,63 @@ const controleSecrets: Controle = {
   },
 };
 
+const controleDeploiement: Controle = {
+  service: "Déploiement continu",
+  description: "Dernier déploiement de production sur Vercel",
+  verifier: async () => {
+    const jeton = process.env.JETON_API_VERCEL;
+    const projet = process.env.PROJET_VERCEL_ID;
+    const equipe = process.env.EQUIPE_VERCEL_ID;
+
+    if (!jeton || !projet || !equipe) {
+      throw new Error("Variables JETON_API_VERCEL, PROJET_VERCEL_ID ou EQUIPE_VERCEL_ID manquantes");
+    }
+
+    const parametres = new URLSearchParams({
+      projectId: projet,
+      teamId: equipe,
+      target: "production",
+      limit: "1",
+    });
+
+    const reponse = await fetch(`https://api.vercel.com/v6/deployments?${parametres}`, {
+      headers: { Authorization: `Bearer ${jeton}` },
+      cache: "no-store",
+    });
+
+    if (!reponse.ok) {
+      throw new Error(`L'API Vercel a répondu avec le statut ${reponse.status}`);
+    }
+
+    const { deployments } = await reponse.json();
+    const dernier = deployments?.[0];
+
+    if (!dernier) {
+      throw new Error("Aucun déploiement de production trouvé");
+    }
+
+    const etat: string = dernier.state ?? dernier.readyState;
+    const commitDernier: string = dernier.meta?.githubCommitSha?.slice(0, 7) ?? "inconnu";
+    const commitEnLigne = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7);
+
+    if (etat === "ERROR") {
+      throw new Error(
+        `La dernière construction de production a échoué (commit ${commitDernier}) : la version précédente est toujours en ligne`
+      );
+    }
+
+    if (etat === "BUILDING" || etat === "QUEUED" || etat === "INITIALIZING") {
+      return `Construction de production en cours (commit ${commitDernier})`;
+    }
+
+    if (commitEnLigne && commitEnLigne !== commitDernier) {
+      return `Version ${commitDernier} prête, en attente de mise en production · En ligne : ${commitEnLigne}`;
+    }
+
+    return `Dernier déploiement réussi et en ligne (commit ${commitDernier})`;
+  },
+};
+
 export const CONTROLES: Controle[] = [
   controleVercel,
   controleIA,
@@ -315,5 +409,7 @@ export const CONTROLES: Controle[] = [
   controleEmail,
   controleSentry,
   controleUptimeRobot,
+  controleLangfuse,
   controleSecrets,
+  controleDeploiement,
 ];
