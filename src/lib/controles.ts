@@ -213,6 +213,54 @@ const controleSentry: Controle = {
   },
 };
 
+const STATUTS_UPTIMEROBOT: Record<number, string> = {
+  0: "en pause",
+  1: "pas encore vérifié",
+  2: "opérationnel",
+  8: "probablement en panne",
+  9: "en panne",
+};
+
+const controleUptimeRobot: Controle = {
+  service: "UptimeRobot",
+  description: "Surveillance externe de disponibilité",
+  verifier: async () => {
+    const cle = process.env.UPTIMEROBOT_API_KEY;
+    if (!cle) {
+      throw new Error("Variable UPTIMEROBOT_API_KEY manquante");
+    }
+
+    const reponse = await fetch("https://api.uptimerobot.com/v2/getMonitors", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        api_key: cle,
+        format: "json",
+        custom_uptime_ratios: "30",
+      }),
+      cache: "no-store",
+    });
+
+    const donnees = await reponse.json();
+
+    if (donnees.stat !== "ok") {
+      throw new Error(donnees.error?.message ?? "Réponse inattendue de l'API UptimeRobot");
+    }
+
+    const moniteur = donnees.monitors?.[0];
+    if (!moniteur) {
+      throw new Error("Aucun moniteur configuré");
+    }
+
+    const etat = STATUTS_UPTIMEROBOT[moniteur.status] ?? "statut inconnu";
+    if (moniteur.status === 8 || moniteur.status === 9) {
+      throw new Error(`Le moniteur « ${moniteur.friendly_name} » signale une panne`);
+    }
+
+    return `Moniteur ${etat} · Disponibilité sur 30 jours : ${moniteur.custom_uptime_ratio} %`;
+  },
+};
+
 export const CONTROLES: Controle[] = [
   controleVercel,
   controleIA,
@@ -224,4 +272,5 @@ export const CONTROLES: Controle[] = [
   controleRealtime,
   controleEmail,
   controleSentry,
+  controleUptimeRobot,
 ];
