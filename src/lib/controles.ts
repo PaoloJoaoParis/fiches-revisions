@@ -261,6 +261,48 @@ const controleUptimeRobot: Controle = {
   },
 };
 
+const VARIABLES_REQUISES = [
+  "AI_BASE_URL",
+  "AI_API_KEY",
+  "AI_MODEL",
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+  "SUPABASE_SECRET_KEY",
+  "ADMIN_EMAILS",
+  "UPSTASH_REDIS_REST_URL",
+  "UPSTASH_REDIS_REST_TOKEN",
+  "APP_URL",
+  "QSTASH_URL",
+  "QSTASH_TOKEN",
+  "QSTASH_CURRENT_SIGNING_KEY",
+  "QSTASH_NEXT_SIGNING_KEY",
+  "RESEND_API_KEY",
+  "NEXT_PUBLIC_SENTRY_DSN",
+  "UPTIMEROBOT_API_KEY",
+  "LANGFUSE_BASE_URL",
+  "LANGFUSE_PUBLIC_KEY",
+  "LANGFUSE_SECRET_KEY",
+];
+
+const controleSecrets: Controle = {
+  service: "Infisical",
+  description: "Gestion centralisée des secrets",
+  verifier: async () => {
+    const manquantes = VARIABLES_REQUISES.filter((nom) => !process.env[nom]);
+
+    if (manquantes.length > 0) {
+      throw new Error(`Variables manquantes : ${manquantes.join(", ")}`);
+    }
+
+    const reponse = await fetch("https://eu.infisical.com/api/status", { cache: "no-store" });
+    if (!reponse.ok) {
+      throw new Error(`Le service a répondu avec le statut ${reponse.status}`);
+    }
+
+    return `Service joignable · ${VARIABLES_REQUISES.length} variables configurées`;
+  },
+};
+
 export const CONTROLES: Controle[] = [
   controleVercel,
   controleIA,
@@ -273,4 +315,5 @@ export const CONTROLES: Controle[] = [
   controleEmail,
   controleSentry,
   controleUptimeRobot,
+  controleSecrets,
 ];
